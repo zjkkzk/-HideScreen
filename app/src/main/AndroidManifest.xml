@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <application
+        android:label="隐屏HideScreen"
+        tools:ignore="HardcodedDebugMode,MissingApplicationIcon">
+
+        <meta-data
+            android:name="xposedmodule"
+            android:value="true" />
+        <meta-data
+            android:name="xposeddescription"
+            android:value="隐屏HideScreen- 截图/录屏/投屏时隐藏目标应用界面，本地显示与交互不受影响。⚠️仅作用于第三方应用，切勿勾选系统界面(android/system UI)
+HideScreen - Hides target app UI from screenshots/recordings/casting. Local display &amp; touch remain intact.⚠️ Apply to third-party apps ONLY. Do NOT select system/framework!" />
+        <meta-data
+            android:name="xposedminversion"
+            android:value="82" />
+    </application>
+
+</manifest>
