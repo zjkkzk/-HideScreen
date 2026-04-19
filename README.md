@@ -15,8 +15,8 @@
 模块的实现完全依赖 Android 原生安全机制 —— 通过设置 `SurfaceControl.setSkipScreenshot(true)`，让系统合成画面时自动跳过指定窗口。模块本身**不修改应用内容、不注入视图、不持续运行**，仅在窗口创建时一次性标记，性能极佳，耗电可忽略不计。
 
 <div align="center">
-  <img src="/app/1.jpg" width="45%" alt="截图效果 - 左侧" />
-  <img src="/app/2.jpg" width="45%" alt="截图效果 - 右侧" />
+  <img src="/main/app/1.jpg" width="45%" alt="截图效果对比 - 左侧" />
+  <img src="/main/app/2.jpg" width="45%" alt="截图效果对比 - 右侧" />
 </div>
 
 ---
@@ -116,7 +116,7 @@
 <a id="english"></a>
 ## English
 
-###概述
+### Overview
 
 **HideScreen** is a lightweight Xposed / LSPosed module for Android.  
 It hides the target application's UI from screenshots, screen recordings, and screen casting results, while the app remains fully visible and interactive on the physical device.
@@ -124,8 +124,8 @@ It hides the target application's UI from screenshots, screen recordings, and sc
 The module leverages Android's native secure surface flag — `SurfaceControl.setSkipScreenshot(true)` — to instruct SurfaceFlinger to exclude specific windows from the final composed output. No content modification, view injection, or background service is involved. Performance is excellent, and power consumption is negligible.
 
 <div align="center">
-  <img src="/app/1.jpg" width="45%" alt="Screenshot comparison - left" />
-  <img src="/app/2.jpg" width="45%" alt="Screenshot comparison - right" />
+  <img src="/main/app/1.jpg" width="45%" alt="Screenshot comparison - left" />
+  <img src="/main/app/2.jpg" width="45%" alt="Screenshot comparison - right" />
 </div>
 
 ---
@@ -154,4 +154,68 @@ The module follows a single‑responsibility principle: **do one thing exception
   - **Intelligent Surface field caching** – The actual `SurfaceControl` field used by the device is detected and memorized, avoiding unnecessary reflection traversal.  
   - **Transaction deduplication** – Each window is marked only once per lifecycle, preventing redundant Binder IPC calls and reducing overhead to the absolute minimum.  
   - **Multi‑version API fallback chain** – Attempts different signatures of `setSkipScreenshot` and `setSecure` in optimal order, ensuring broad compatibility from Android 6.0 to the latest versions.  
-  - **Resource cleanup** – Actively calls `close()` on the transaction o
+  - **Resource cleanup** – Actively calls `close()` on the transaction object to release underlying Binder references promptly.  
+  - **Weak reference containers** – Window markers are stored in weak‑reference sets, allowing automatic cleanup when windows are destroyed with zero memory leaks.  
+  - **Thread safety & reentrancy guard** – Proper synchronization and protective mechanisms ensure stability even under concurrent callbacks.
+
+- **Performance & Power**  
+  The module performs a brief transaction only when a window is created, rotated, or rebuilt. The rest of the time it stays completely idle. Its impact on CPU and battery is so minimal that it is entirely unnoticeable in daily use, even on low‑end devices.
+
+---
+
+### Requirements
+
+- Android 6.0 – 15+ (actual behavior depends on system implementation)  
+- An active Xposed framework (original, EdXposed, or LSPosed)  
+- The module scope should be limited to third‑party applications only
+
+---
+
+### Usage
+
+1. Install the module APK  
+2. Enable the module in LSPosed Manager  
+3. **Select only the third‑party apps** you wish to hide from screenshots / recordings  
+4. Force‑stop and relaunch the target apps
+
+Once enabled, selected apps will no longer appear in system screenshots, screen recordings, or casting outputs.
+
+---
+
+### ⚠️ Important Warning
+
+**Do NOT apply this module to the following:**
+
+- System UI  
+- Android framework (`android`) or `system_server`  
+- Any system‑level packages (Settings, Phone, Launcher, etc.)
+
+Applying the module to system components may cause:
+
+- Complete breakage of screenshot / recording functionality  
+- Black screens, unresponsive UI, or boot loops  
+- System instability or failure to start
+
+This module is **strictly designed for ordinary third‑party applications**. Choose scopes carefully within LSPosed.
+
+---
+
+### Disclaimer
+
+- This project is intended for technical research, privacy protection, and compliance testing.  
+- Effectiveness may vary on heavily customized OEM ROMs due to differing support for `setSkipScreenshot`.  
+- Users are responsible for complying with local laws and regulations.  
+- The author assumes no liability for any consequences resulting from the use of this module.
+
+---
+
+### Acknowledgments
+
+The core idea of this module was inspired by [Transparent Screenshot](https://github.com/Dszsu/Transparent_screenshot). We appreciate the original author's open-source spirit.  
+The current version has been completely refactored in terms of performance, compatibility, and resource management. See [Technical Highlights](#technical-highlights--optimizations) for detailed differences.
+
+---
+
+### License
+
+This project is licensed under the [MIT License](LICENSE).
