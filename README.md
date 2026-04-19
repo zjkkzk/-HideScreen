@@ -15,8 +15,8 @@
 模块的实现完全依赖 Android 原生安全机制 —— 通过设置 `SurfaceControl.setSkipScreenshot(true)`，让系统合成画面时自动跳过指定窗口。模块本身**不修改应用内容、不注入视图、不持续运行**，仅在窗口创建时一次性标记，性能极佳，耗电可忽略不计。
 
 <div align="center">
-  <img src="/main/app/1.jpg" width="45%" alt="截图效果 - 1" />
-  <img src="/main/app/2.jpg" width="45%" alt="截图效果 - 2" />
+  <img src="/app/1.jpg" width="45%" alt="截图效果 - 1" />
+  <img src="/app/2.jpg" width="45%" alt="截图效果 - 2" />
 </div>
 
 ---
@@ -116,7 +116,7 @@
 <a id="english"></a>
 ## English
 
-### Overview
+###概述
 
 **HideScreen** is a lightweight Xposed / LSPosed module for Android.  
 It hides the target application's UI from screenshots, screen recordings, and screen casting results, while the app remains fully visible and interactive on the physical device.
@@ -124,8 +124,8 @@ It hides the target application's UI from screenshots, screen recordings, and sc
 The module leverages Android's native secure surface flag — `SurfaceControl.setSkipScreenshot(true)` — to instruct SurfaceFlinger to exclude specific windows from the final composed output. No content modification, view injection, or background service is involved. Performance is excellent, and power consumption is negligible.
 
 <div align="center">
-  <img src="/main/app/1.jpg" width="45%" alt="Screenshot comparison - left" />
-  <img src="/main/app/2.jpg" width="45%" alt="Screenshot comparison - right" />
+  <img src="/app/1.jpg" width="45%" alt="Screenshot 1" />
+  <img src="/app/2.jpg" width="45%" alt="Screenshot 2" />
 </div>
 
 ---
