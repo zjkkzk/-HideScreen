@@ -17,17 +17,15 @@ import de.robv.android.xposed.XposedHelpers;
 import de.robv.android.xposed.callbacks.XC_LoadPackage;
 
 /**
- * 通用防截屏模块（最终精炼版）
- * - 保护所有 WindowManager 添加的窗口
- * - 仅阻止软件截图/录屏，不影响物理显示输出
+ * 通用防截屏模块
+ * - 保护 WindowManager 添加的窗口
+ * - 软件截图/录屏等为透明
  * - 极致性能，资源安全，缓存失效自愈
  * - 修复低级反射错误，增强异常边界处理
  */
 public class MainHook implements IXposedHookLoadPackage {
 
     private final Set<View> protectedViews =
-            Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
-    private final Set<Object> dimHandled =
             Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
     private final Set<Object> secureApplied =
             Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
@@ -144,13 +142,12 @@ public class MainHook implements IXposedHookLoadPackage {
     }
 
     private void removeDim(Object vri) {
-        if (fWindowAttributes == null || dimHandled.contains(vri)) return;
+        if (fWindowAttributes == null) return;
         try {
             WindowManager.LayoutParams lp = (WindowManager.LayoutParams) fWindowAttributes.get(vri);
             if (lp != null && (lp.flags & WindowManager.LayoutParams.FLAG_DIM_BEHIND) != 0) {
                 lp.flags &= ~WindowManager.LayoutParams.FLAG_DIM_BEHIND;
                 lp.dimAmount = 0f;
-                dimHandled.add(vri);
             }
         } catch (Throwable ignored) {}
     }
