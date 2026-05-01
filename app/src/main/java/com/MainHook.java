@@ -17,24 +17,27 @@ import de.robv.android.xposed.XposedHelpers;
 import de.robv.android.xposed.callbacks.XC_LoadPackage;
 
 /**
- * 通用防截屏模块（最终修正版）
+ * 通用防截屏模块（最终精炼版）
  * - 保护所有 WindowManager 添加的窗口
  * - 仅阻止软件截图/录屏，不影响物理显示输出
  * - 极致性能，资源安全，缓存失效自愈
+ * - 修复低级反射错误，增强异常边界处理
  */
 public class MainHook implements IXposedHookLoadPackage {
 
-    private final Set<View> protectedViews = 
+    private final Set<View> protectedViews =
             Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
-    private final Set<Object> dimHandled = 
+    private final Set<Object> dimHandled =
             Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
-    private final Set<Object> secureApplied = 
+    private final Set<Object> secureApplied =
             Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
 
     private Field fView, fWindowAttributes, fSurfaceControl, fLeash, fSurfaceControlLocked, fSurface;
-    private Field validSurfaceField;
-    private Method mScIsValid, mTransactionApply, mSetSkipScreenshot, mSetSkipScreenshotLegacy, mSetSecure;
+    private volatile Field validSurfaceField;
+    private Method mScIsValid, mTransactionApply, mTransactionClose;
+    private Method mSetSkipScreenshot, mSetSkipScreenshotLegacy, mSetSecure;
     private Constructor<?> consTransaction;
+    private Class<?> scClass;  // 用于类型安全判断
 
     private volatile boolean cacheReady;
     private final Object cacheLock = new Object();
@@ -107,6 +110,7 @@ public class MainHook implements IXposedHookLoadPackage {
         synchronized (cacheLock) {
             if (cacheReady) return;
 
+            // ViewRootImpl 字段
             try { fView = vriClass.getDeclaredField("mView"); fView.setAccessible(true); } catch (Throwable ignored) {}
             try { fWindowAttributes = vriClass.getDeclaredField("mWindowAttributes"); fWindowAttributes.setAccessible(true); } catch (Throwable ignored) {}
             try { fSurfaceControl = vriClass.getDeclaredField("mSurfaceControl"); fSurfaceControl.setAccessible(true); } catch (Throwable ignored) {}
@@ -114,8 +118,9 @@ public class MainHook implements IXposedHookLoadPackage {
             try { fSurfaceControlLocked = vriClass.getDeclaredField("mSurfaceControlLocked"); fSurfaceControlLocked.setAccessible(true); } catch (Throwable ignored) {}
             try { fSurface = vriClass.getDeclaredField("mSurface"); fSurface.setAccessible(true); } catch (Throwable ignored) {}
 
+            // SurfaceControl 及相关事务方法
             try {
-                Class<?> scClass = Class.forName("android.view.SurfaceControl", false, systemCl);
+                scClass = Class.forName("android.view.SurfaceControl", false, systemCl);
                 Class<?> txnClass = Class.forName("android.view.SurfaceControl$Transaction", false, systemCl);
                 mScIsValid = scClass.getDeclaredMethod("isValid");
                 mScIsValid.setAccessible(true);
@@ -123,12 +128,16 @@ public class MainHook implements IXposedHookLoadPackage {
                 consTransaction.setAccessible(true);
                 mTransactionApply = txnClass.getDeclaredMethod("apply");
                 mTransactionApply.setAccessible(true);
+                mTransactionClose = txnClass.getDeclaredMethod("close");
+                mTransactionClose.setAccessible(true);
 
-                // 保持经过验证的最优降级顺序
+                // 安全截图标记方法，按兼容性降级
                 try { mSetSkipScreenshot = txnClass.getDeclaredMethod("setSkipScreenshot", scClass, boolean.class); mSetSkipScreenshot.setAccessible(true); } catch (Throwable ignored) {}
                 try { mSetSkipScreenshotLegacy = txnClass.getDeclaredMethod("setSkipScreenshot", boolean.class); mSetSkipScreenshotLegacy.setAccessible(true); } catch (Throwable ignored) {}
                 try { mSetSecure = txnClass.getDeclaredMethod("setSecure", scClass, boolean.class); mSetSecure.setAccessible(true); } catch (Throwable ignored) {}
-            } catch (Throwable ignored) {}
+            } catch (Throwable ignored) {
+                // 极端情况：连 SurfaceControl 类都加载失败，保证不会后续 NPE
+            }
 
             cacheReady = true;
         }
@@ -155,22 +164,23 @@ public class MainHook implements IXposedHookLoadPackage {
         if (view == null || !protectedViews.contains(view)) return;
 
         Object sc = findValidSurface(vri);
-        if (sc == null) return;
+        if (sc == null) {
+            // 当前无有效 SurfaceControl，清除记录以便后续重试
+            secureApplied.remove(vri);
+            return;
+        }
 
         Object txn = null;
         try {
             txn = consTransaction.newInstance();
             boolean applied = false;
 
-            // 1. 首选：setSkipScreenshot(SurfaceControl, boolean) - 最广泛支持
             if (mSetSkipScreenshot != null) {
                 try { mSetSkipScreenshot.invoke(txn, sc, true); applied = true; } catch (Throwable ignored) {}
             }
-            // 2. 降级：setSkipScreenshot(boolean) - 旧版本
             if (!applied && mSetSkipScreenshotLegacy != null) {
                 try { mSetSkipScreenshotLegacy.invoke(txn, true); applied = true; } catch (Throwable ignored) {}
             }
-            // 3. 兜底：setSecure - 兼容极端情况
             if (!applied && mSetSecure != null) {
                 try { mSetSecure.invoke(txn, sc, true); applied = true; } catch (Throwable ignored) {}
             }
@@ -183,17 +193,24 @@ public class MainHook implements IXposedHookLoadPackage {
         } finally {
             if (txn != null) {
                 try {
-                    txn.getClass().getMethod("close").invoke(txn);
+                    if (mTransactionClose != null) {
+                        mTransactionClose.invoke(txn);
+                    } else {
+                        txn.getClass().getMethod("close").invoke(txn);
+                    }
                 } catch (Throwable ignored) {}
             }
         }
     }
 
     private Object findValidSurface(Object vri) {
+        // 防止极端情况下 scClass 未初始化造成高频 NPE
+        if (scClass == null) return null;
+
         if (validSurfaceField != null) {
             try {
                 Object sc = validSurfaceField.get(vri);
-                if (sc != null && Boolean.TRUE.equals(mScIsValid.invoke(sc))) {
+                if (sc != null && scClass.isInstance(sc) && Boolean.TRUE.equals(mScIsValid.invoke(sc))) {
                     return sc;
                 }
             } catch (Throwable ignored) {}
@@ -206,7 +223,7 @@ public class MainHook implements IXposedHookLoadPackage {
             if (f == null) continue;
             try {
                 Object sc = f.get(vri);
-                if (sc != null && Boolean.TRUE.equals(mScIsValid.invoke(sc))) {
+                if (sc != null && scClass.isInstance(sc) && Boolean.TRUE.equals(mScIsValid.invoke(sc))) {
                     validSurfaceField = f;
                     return sc;
                 }
